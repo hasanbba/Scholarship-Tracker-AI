@@ -1,0 +1,1 @@
+<template><section class="state-page"><span class="state-mark">404</span><p class="eyebrow">WRONG TURN</p><h1>This page isn’t here.</h1><p>The address may have changed, or the page may not exist yet.</p><RouterLink class="button button-primary" to="/">Back to home <span aria-hidden="true">→</span></RouterLink></section></template>

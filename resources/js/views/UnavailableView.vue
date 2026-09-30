@@ -1,0 +1,1 @@
+<template><section class="state-page"><span class="state-mark">!</span><p class="eyebrow">CONNECTION INTERRUPTED</p><h1>We couldn’t check your session.</h1><p>Please check your connection and try again. Your account data has not been changed.</p><button class="button button-primary" @click="$router.go(0)">Try again <span aria-hidden="true">↻</span></button></section></template>
