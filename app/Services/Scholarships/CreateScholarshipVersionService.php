@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\DB;
 
 class CreateScholarshipVersionService
 {
-    public function create(ScholarshipCycle $cycle, ?User $actor, string $changeType, ?int $sourceId = null): ScholarshipVersion
+    public function create(ScholarshipCycle $cycle, ?User $actor, string $changeType, ?int $sourceId = null, array $snapshotMetadata = []): ScholarshipVersion
     {
-        return DB::transaction(function () use ($cycle, $actor, $changeType, $sourceId) {
+        return DB::transaction(function () use ($cycle, $actor, $changeType, $sourceId, $snapshotMetadata) {
             $cycle = ScholarshipCycle::query()->with([
                 'scholarship.university.country.region',
                 'scholarship.subjects',
@@ -40,7 +40,15 @@ class CreateScholarshipVersionService
                     'country' => $cycle->scholarship->university->country->only(['id', 'region_id', 'name', 'normalized_name', 'slug', 'iso2', 'iso3']),
                     'region' => $cycle->scholarship->university->country->region?->only(['id', 'name', 'slug']),
                 ],
-                'cycle' => $cycle->only(['id', 'cycle_key', 'label', 'opening_date', 'deadline', 'application_url', 'status']),
+                'cycle' => [
+                    'id' => $cycle->id,
+                    'cycle_key' => $cycle->cycle_key,
+                    'label' => $cycle->label,
+                    'opening_date' => $cycle->opening_date?->toDateString(),
+                    'deadline' => $cycle->deadline?->toDateString(),
+                    'application_url' => $cycle->application_url,
+                    'status' => $cycle->status,
+                ],
                 'subjects' => $cycle->scholarship->subjects->map(fn ($subject) => $subject->only(['id', 'name', 'slug']))->values()->all(),
                 'funding' => $fundingSnapshot,
                 'eligibility_rules' => $cycle->eligibilityRules->map(fn ($rule) => [
@@ -51,8 +59,11 @@ class CreateScholarshipVersionService
                 ])->values()->all(),
                 'sources' => $cycle->scholarship->sources->map(fn ($source) => $source->only(['id', 'source_type', 'source_name', 'source_url', 'is_primary', 'status']))->values()->all(),
             ];
+            if ($snapshotMetadata !== []) {
+                $snapshot['data_quality'] = $snapshotMetadata;
+            }
 
-            return ScholarshipVersion::query()->create([
+            $version = ScholarshipVersion::query()->create([
                 'scholarship_id' => $cycle->scholarship_id,
                 'cycle_id' => $cycle->id,
                 'version_number' => $number,
@@ -62,6 +73,15 @@ class CreateScholarshipVersionService
                 'actor_id' => $actor?->id,
                 'source_id' => $sourceId,
             ]);
+
+            $version->verificationRecords()->create([
+                'status' => 'pending',
+                'actor_id' => $actor?->id,
+                'source_id' => $sourceId,
+                'decided_at' => now(),
+            ]);
+
+            return $version;
         });
     }
 

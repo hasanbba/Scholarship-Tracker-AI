@@ -38,4 +38,29 @@ class ScholarshipCycle extends Model
     {
         return $this->hasMany(ScholarshipVersion::class, 'cycle_id');
     }
+
+    public function publishedVersion(): BelongsTo
+    {
+        return $this->belongsTo(ScholarshipVersion::class, 'published_version_id');
+    }
+
+    public function publicationEvents(): HasMany
+    {
+        return $this->hasMany(PublicationEvent::class, 'cycle_id');
+    }
+
+    public function proposedChanges(): HasMany
+    {
+        return $this->hasMany(ProposedChange::class, 'target_cycle_id');
+    }
+
+    public function reviewTasks(): HasMany
+    {
+        return $this->hasMany(ReviewTask::class, 'target_cycle_id');
+    }
+
+    public function fieldProvenance(): HasMany
+    {
+        return $this->hasMany(FieldProvenance::class, 'cycle_id');
+    }
 }

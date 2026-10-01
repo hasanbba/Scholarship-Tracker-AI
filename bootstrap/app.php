@@ -41,10 +41,14 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (HttpExceptionInterface $exception, Request $request) {
-            if ($request->is('api/*') && in_array($exception->getStatusCode(), [403, 404], true)) {
-                $message = $exception->getStatusCode() === 403
-                    ? 'This action is unauthorized.'
-                    : 'Resource not found.';
+            if ($request->is('api/*') && in_array($exception->getStatusCode(), [401, 403, 404, 409, 429], true)) {
+                $message = match ($exception->getStatusCode()) {
+                    401 => 'Unauthenticated.',
+                    403 => 'This action is unauthorized.',
+                    404 => 'Resource not found.',
+                    409 => 'The request conflicts with the current resource state.',
+                    429 => 'Too many requests.',
+                };
 
                 return response()->json(ApiResponse::failure($message), $exception->getStatusCode());
             }

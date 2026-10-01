@@ -1,0 +1,104 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Scholarship\CrawlerWorker\Cli\ApplicationFactory;
+use Scholarship\CrawlerWorker\Config\WorkerConfig;
+use Scholarship\CrawlerWorker\Exception\ApiException;
+use Scholarship\CrawlerWorker\Exception\AuthenticationException;
+use Scholarship\CrawlerWorker\Exception\AuthorizationException;
+use Scholarship\CrawlerWorker\Exception\ConfigurationException;
+use Scholarship\CrawlerWorker\Exception\LocalStorageException;
+use Scholarship\CrawlerWorker\Exception\ProtocolException;
+use Scholarship\CrawlerWorker\Exception\RetryableApiException;
+use Scholarship\CrawlerWorker\Exception\TransportException;
+use Scholarship\CrawlerWorker\Exception\WorkerException;
+use Scholarship\CrawlerWorker\Support\SecretPrompt;
+
+if (PHP_VERSION_ID < 80300) {
+    fwrite(STDERR, "Scholarship Crawler Worker requires PHP 8.3 or newer; found ".PHP_VERSION.PHP_EOL);
+    exit(2);
+}
+
+require dirname(__DIR__).'/vendor/autoload.php';
+
+const HELP = <<<'HELP'
+Scholarship Tracker independent crawler communication worker (PHP 8.3+)
+
+Usage:
+  php bin/worker --help
+  php bin/worker activate [--api-url=https://server.example]
+  php bin/worker status
+  php bin/worker doctor
+  php bin/worker once
+  php bin/worker poll [--max-cycles=N]
+
+Phase 5B.2 fetches bounded raw artifacts only from registered source scope. It does not extract scholarship data.
+HELP;
+
+$args = array_slice($argv, 1);
+$command = $args[0] ?? '--help';
+if (in_array($command, ['--help', '-h', 'help'], true)) {
+    fwrite(STDOUT, HELP.PHP_EOL);
+    exit(0);
+}
+
+$apiUrl = null;
+$maxCycles = null;
+foreach (array_slice($args, 1) as $arg) {
+    if (str_starts_with($arg, '--api-url=')) $apiUrl = substr($arg, strlen('--api-url='));
+    if (str_starts_with($arg, '--max-cycles=')) $maxCycles = max(1, (int) substr($arg, strlen('--max-cycles=')));
+}
+
+try {
+    $root = dirname(__DIR__);
+    $config = WorkerConfig::load($root);
+    if ($apiUrl !== null) $config = $config->withApiBaseUrl($apiUrl);
+    if ($command === 'activate' && $config->apiBaseUrl === '') {
+        fwrite(STDOUT, 'Laravel API base URL (HTTPS required except explicitly allowed localhost): ');
+        $entered = fgets(STDIN);
+        if (! is_string($entered) || trim($entered) === '') throw new ConfigurationException('No API URL was entered.');
+        $config = $config->withApiBaseUrl(trim($entered));
+    }
+    $config->validateForApi();
+    $worker = ApplicationFactory::create($config);
+
+    switch ($command) {
+        case 'activate':
+            $code = (new SecretPrompt())->read('Enter the single-use activation code (input is hidden):');
+            if ($code === '') throw new ConfigurationException('No activation code was entered.');
+            $identity = $worker->activate($code);
+            fwrite(STDOUT, 'Worker activated: '.$identity['label'].' ('.$identity['worker_uuid'].'). Token stored in the configured credential store.'.PHP_EOL);
+            exit(0);
+        case 'status':
+            $result = $worker->status();
+            fwrite(STDOUT, json_encode(['worker' => $result['worker'], 'api_base_url' => $result['api_base_url'], 'credential_state' => $result['credential_state'], 'expires_at' => $result['expires_at']], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);
+            exit(0);
+        case 'doctor':
+            $result = $worker->doctor();
+            fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);
+            exit(($result['credential_available'] && $result['worker_authenticated']) ? 0 : 4);
+        case 'once':
+            $worker->once();
+            exit(0);
+        case 'poll':
+            $worker->poll($maxCycles);
+            exit(0);
+        default:
+            fwrite(STDERR, 'Unknown command. Use --help.'.PHP_EOL);
+            exit(2);
+    }
+} catch (Throwable $exception) {
+    $exitCode = match (true) {
+        $exception instanceof ConfigurationException => 2,
+        $exception instanceof AuthenticationException, $exception instanceof AuthorizationException => 3,
+        $exception instanceof TransportException, $exception instanceof RetryableApiException => 5,
+        $exception instanceof LocalStorageException => 6,
+        $exception instanceof WorkerException => 4,
+        default => 7,
+    };
+    $safeMessage = $exception instanceof WorkerException ? $exception->getMessage() : 'Worker encountered an unexpected internal error.';
+    fwrite(STDERR, $safeMessage.PHP_EOL.'Exit code: '.$exitCode.PHP_EOL);
+    exit($exitCode);
+}

@@ -29,14 +29,15 @@ class FoundationApiTest extends TestCase
             ]);
     }
 
-    public function test_public_and_authenticated_browser_paths_serve_the_spa_shell(): void
+    public function test_public_home_is_server_rendered_and_authenticated_browser_paths_serve_the_spa_shell(): void
     {
         $this->withoutVite();
 
         $this->get('/')
             ->assertOk()
             ->assertSee('ScholarSignal')
-            ->assertSee('id="app"', false);
+            ->assertSee('name="q"', false)
+            ->assertDontSee('id="app"', false);
 
         $this->get('/profile')
             ->assertOk()

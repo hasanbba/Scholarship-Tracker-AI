@@ -149,6 +149,6 @@ class ScholarshipController extends Controller
     {
         $this->authorize('view', $cycle->scholarship);
 
-        return response()->json(ApiResponse::success('Cycle versions retrieved successfully.', VersionResource::collection($cycle->versions()->orderByDesc('version_number')->get())->resolve()));
+        return response()->json(ApiResponse::success('Cycle versions retrieved successfully.', VersionResource::collection($cycle->versions()->with('verificationRecords')->orderByDesc('version_number')->get())->resolve()));
     }
 }

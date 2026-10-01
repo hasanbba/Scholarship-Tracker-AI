@@ -12,7 +12,7 @@ class Scholarship extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['university_id', 'title', 'slug', 'description', 'official_url', 'publication_status', 'lifecycle_status'];
+    protected $fillable = ['university_id', 'title', 'slug', 'description', 'official_url', 'lifecycle_status'];
 
     public function university(): BelongsTo
     {
@@ -37,5 +37,10 @@ class Scholarship extends Model
     public function versions(): HasMany
     {
         return $this->hasMany(ScholarshipVersion::class);
+    }
+
+    public function fieldProvenance(): HasMany
+    {
+        return $this->hasMany(FieldProvenance::class);
     }
 }

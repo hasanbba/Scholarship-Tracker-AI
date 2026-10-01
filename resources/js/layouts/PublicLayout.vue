@@ -18,6 +18,7 @@ async function signOut() {
         <header class="topbar public-topbar">
             <RouterLink class="brand" :to="homeTarget"><span class="brand-mark">S</span><span>Scholar<span class="brand-light">Signal</span></span></RouterLink>
             <nav class="top-actions" aria-label="Main navigation">
+                <a href="/scholarships" class="nav-link">Browse scholarships</a>
                 <RouterLink v-if="auth.isAuthenticated" to="/dashboard" class="nav-link">Workspace</RouterLink>
                 <RouterLink v-if="auth.isAuthenticated && auth.canAccessAdmin" to="/admin" class="nav-link">Admin</RouterLink>
                 <button v-if="auth.isAuthenticated" class="button button-quiet" @click="signOut">Sign out</button>
