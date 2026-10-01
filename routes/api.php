@@ -57,6 +57,7 @@ Route::middleware(AuthenticateUserSession::class)->group(function () {
         Route::delete('/crawler/workers/{worker}/credentials/{credential}', [CrawlerAdminController::class, 'revoke'])->middleware('can:crawler.workers.manage')->name('crawler.workers.credentials.revoke');
         Route::patch('/crawler/sources/{source}/configuration', [CrawlerAdminController::class, 'updateSource'])->middleware('can:crawler.sources.manage')->name('crawler.sources.update');
         Route::get('/crawler/jobs', [CrawlerAdminController::class, 'jobs'])->middleware('can:crawler.jobs.view')->name('crawler.jobs.index');
+        Route::get('/crawler/sources/{source}/schedule', [CrawlerAdminController::class, 'sourceSchedule'])->middleware('can:crawler.jobs.view')->name('crawler.sources.schedule');
         Route::post('/crawler/sources/{source}/jobs', [CrawlerAdminController::class, 'createJob'])->middleware('can:crawler.jobs.manage')->name('crawler.jobs.store');
         Route::post('/crawler/jobs/{job}/cancel', [CrawlerAdminController::class, 'cancel'])->middleware('can:crawler.jobs.manage')->name('crawler.jobs.cancel');
         Route::post('/crawler/jobs/{job}/retry', [CrawlerAdminController::class, 'retry'])->middleware('can:crawler.jobs.manage')->name('crawler.jobs.retry');

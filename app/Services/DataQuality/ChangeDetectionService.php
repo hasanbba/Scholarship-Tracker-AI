@@ -81,7 +81,7 @@ class ChangeDetectionService
                     'display_old' => $this->display($old),
                     'display_new' => $this->display($value),
                     'normalization_version' => $run->normalization_version,
-                    'evidence_locator' => ['json_pointer' => '/'.str_replace('.', '/', $path)],
+                    'evidence_locator' => $this->evidenceLocator($run, $path),
                     'detection_reason' => $baseline ? 'normalized_value_changed' : 'first_discovery',
                     'materiality' => $this->materiality($path),
                     'status' => 'pending',
@@ -259,5 +259,26 @@ class ChangeDetectionService
         }
 
         return true;
+    }
+
+    private function evidenceLocator(ProcessingRun $run, string $path): array
+    {
+        $phase6 = $run->extracted_payload['phase6'] ?? null;
+        if (is_array($phase6)) {
+            $fieldPaths = match ($path) {
+                'cycle.deadline' => ['scholarship.deadline'],
+                'cycle.opening_date' => ['scholarship.opening_date'],
+                'cycle.application_url' => ['scholarship.application_url'],
+                'subjects' => ['scholarship.subject', 'eligibility.subject'],
+                'funding.tuition_amount', 'funding.tuition_currency', 'funding.tuition_period' => ['funding.tuition'],
+                'funding.stipend_amount', 'funding.stipend_currency', 'funding.stipend_period' => ['funding.stipend'],
+                'eligibility_rules' => array_values(array_filter(['eligibility.gpa', 'eligibility.ielts', 'eligibility.toefl', 'eligibility.pte', 'eligibility.duolingo', 'eligibility.gre', 'eligibility.gmat', 'eligibility.nationality', 'eligibility.degree', 'eligibility.subject'], fn (string $fieldPath): bool => collect($phase6['fields'] ?? [])->contains(fn (array $field): bool => ($field['path'] ?? null) === $fieldPath && ($field['status'] ?? null) !== 'missing'))),
+                default => [$path],
+            };
+            $fields = collect($phase6['fields'] ?? [])->filter(fn (array $field): bool => in_array($field['path'] ?? null, $fieldPaths, true) && ($field['status'] ?? null) !== 'missing')->values()->all();
+            if ($fields !== []) return ['phase6_fields' => $fields, 'observation_id' => $run->observation_id, 'processing_run_id' => $run->id, 'source_url' => $run->observation?->observed_url];
+        }
+
+        return ['json_pointer' => '/'.str_replace('.', '/', $path)];
     }
 }

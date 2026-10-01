@@ -14,21 +14,28 @@ class ObservationProcessor
     public function __construct(
         private readonly ObservationIngestionService $observations,
         private readonly JsonCandidateExtractor $extractor,
+        private readonly HtmlScholarshipExtractor $htmlExtractor,
         private readonly NormalizationService $normalizer,
         private readonly CandidateValidationService $validator,
     ) {}
 
-    public function process(RawObservation $observation, string $runKey, string $parserVersion = 'json-v1'): ProcessingRun
+    public function process(RawObservation $observation, string $runKey, ?string $parserVersion = null): ProcessingRun
     {
         if ($observation->source_access_status !== 'success') {
             throw ValidationException::withMessages(['observation' => 'Only successful source captures can be processed as scholarship evidence.']);
         }
 
+        $parserVersion ??= match ($observation->content_type) {
+            'text/html', 'application/xhtml+xml' => HtmlScholarshipExtractor::VERSION,
+            'application/pdf' => 'unsupported-v1',
+            default => 'json-v1',
+        };
+
         return DB::transaction(function () use ($observation, $runKey, $parserVersion): ProcessingRun {
             $run = ProcessingRun::query()->firstOrCreate(
                 ['observation_id' => $observation->id, 'run_key' => $runKey],
                 [
-                    'parser_name' => 'structured-json',
+                    'parser_name' => $parserVersion === HtmlScholarshipExtractor::VERSION ? 'deterministic-html-scholarship' : 'structured-json',
                     'parser_version' => $parserVersion,
                     'normalization_version' => NormalizationService::VERSION,
                     'validation_version' => '1',
@@ -52,10 +59,32 @@ class ObservationProcessor
 
             try {
                 $raw = $this->observations->payload($observation);
-                $extracted = $this->extractor->extract($raw);
+                if ($observation->content_type === 'application/pdf') {
+                    $run->forceFill(['parser_name' => 'unsupported', 'status' => 'failed', 'last_error_code' => 'unsupported_parser',
+                        'validation_errors' => [['field' => 'observation', 'code' => 'unsupported_pdf_parser']], 'finished_at' => now()])->save();
+
+                    return $run->refresh();
+                }
+                $phase6 = $parserVersion === HtmlScholarshipExtractor::VERSION
+                    ? $this->htmlExtractor->extract($raw, $observation->loadMissing('source.university.country.region', 'source.scholarship'))
+                    : null;
+                $extracted = $phase6 ? $phase6['candidate'] : $this->extractor->extract($raw);
                 $normalized = $this->normalizer->normalize($extracted);
                 $errors = $this->validator->validate($normalized);
                 $warnings = [];
+                if ($phase6 !== null) {
+                    foreach ($phase6['fields'] as &$field) {
+                        if (is_array($field['evidence'] ?? null)) {
+                            $field['evidence'] += ['source_url' => $observation->observed_url, 'observation_id' => $observation->id,
+                                'processing_run_id' => $run->id, 'parser_version' => $parserVersion, 'extraction_method' => $field['method'], 'extracted_at' => now()->toIso8601String()];
+                        }
+                        if (($field['status'] ?? null) === 'invalid') $errors[] = ['field' => $field['path'], 'code' => $field['issue'] ?? 'invalid_extracted_value'];
+                    }
+                    unset($field);
+                    foreach ($phase6['issues'] as $issue) $warnings[] = $issue;
+                    $normalized['_phase6'] = ['fields' => $phase6['fields'], 'issues' => $phase6['issues'], 'source_url' => $observation->observed_url,
+                        'observation_id' => $observation->id, 'processing_run_id' => $run->id, 'parser_version' => $parserVersion];
+                }
                 if (! array_key_exists('funding', $extracted)) {
                     $warnings[] = ['field' => 'funding', 'code' => 'funding_not_stated'];
                 }
@@ -66,7 +95,10 @@ class ObservationProcessor
                     $warnings[] = ['field' => 'cycle.deadline', 'code' => 'deadline_unknown'];
                 }
                 $run->forceFill([
-                    'extracted_payload' => ['candidate' => $extracted, 'evidence' => $this->evidencePointers($extracted)],
+                    'parser_name' => $phase6 !== null ? 'deterministic-html-scholarship' : 'structured-json',
+                    'extracted_payload' => ['candidate' => $extracted, 'evidence' => $phase6 !== null ? $this->phase6Evidence($phase6['fields']) : $this->evidencePointers($extracted),
+                        'phase6' => $phase6 ? ['fields' => $phase6['fields'], 'issues' => $phase6['issues'], 'source_url' => $observation->observed_url,
+                            'observation_id' => $observation->id, 'processing_run_id' => $run->id, 'parser_version' => $parserVersion] : null],
                     'normalized_payload' => $normalized,
                     'validation_errors' => $errors,
                     'validation_warnings' => $warnings,
@@ -100,5 +132,12 @@ class ObservationProcessor
         }
 
         return $pointers;
+    }
+
+    private function phase6Evidence(array $fields): array
+    {
+        $evidence = [];
+        foreach ($fields as $field) if (is_array($field['evidence'] ?? null)) $evidence['/'.str_replace('.', '/', $field['path'])] = $field['evidence'];
+        return $evidence;
     }
 }

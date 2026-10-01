@@ -9,6 +9,7 @@ use App\Models\CrawlJob;
 use App\Models\ScholarshipSource;
 use App\Services\Crawler\CrawlerEventRecorder;
 use App\Services\Crawler\CrawlJobService;
+use App\Services\Crawler\CrawlerDueSourceService;
 use App\Services\Crawler\WorkerActivationService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -91,6 +92,14 @@ class CrawlerAdminController extends Controller
     public function jobs(): JsonResponse
     {
         return response()->json(ApiResponse::success('Crawl jobs retrieved.', CrawlJob::query()->with(['source:id,source_name,source_url'])->withCount('attempts')->latest()->paginate(50)));
+    }
+
+    public function sourceSchedule(ScholarshipSource $source, CrawlerDueSourceService $dueSources): JsonResponse
+    {
+        return response()->json(ApiResponse::success('Source crawl schedule retrieved.', [
+            'source_id' => $source->id,
+            ...$dueSources->scheduleStatus($source),
+        ]));
     }
 
     public function cancel(Request $request, CrawlJob $job, CrawlerEventRecorder $events): JsonResponse

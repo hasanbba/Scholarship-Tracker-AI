@@ -11,7 +11,7 @@ class CandidateValidationService
 {
     private const RULE_TYPES = ['nationality', 'degree', 'subject', 'field', 'gpa', 'gpa_scale', 'percentage', 'ielts', 'toefl', 'pte', 'duolingo', 'gre', 'gmat', 'age', 'work_experience', 'graduation_year', 'academic_background', 'other'];
 
-    private const OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'contains'];
+    private const OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'contains', '=', '!=', '>', '>=', '<', '<='];
 
     public function validate(array $candidate): array
     {

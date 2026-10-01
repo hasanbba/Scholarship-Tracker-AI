@@ -46,7 +46,7 @@ class DataQualityController extends Controller
         ObservationProcessor $processor,
         ChangeDetectionService $detection,
     ): JsonResponse {
-        $run = $processor->process($observation, $request->string('run_key')->toString(), $request->string('parser_version', 'json-v1')->toString());
+        $run = $processor->process($observation, $request->string('run_key')->toString(), $request->input('parser_version'));
         $task = $run->status === 'succeeded' ? $detection->detect($run) : null;
 
         return response()->json(ApiResponse::success('Observation processing completed.', [

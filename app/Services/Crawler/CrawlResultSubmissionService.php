@@ -10,6 +10,7 @@ use App\Models\RawObservation;
 use App\Models\ScholarshipSource;
 use App\Services\DataQuality\ObservationIngestionService;
 use App\Services\DataQuality\ObservationProcessor;
+use App\Services\DataQuality\HtmlScholarshipExtractor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -87,7 +88,9 @@ class CrawlResultSubmissionService
                 if ($attempt->artifact_content_type === 'application/pdf') {
                     $run = ProcessingRun::query()->firstOrCreate(['observation_id' => $observation->id, 'run_key' => $runKey], ['parser_name' => 'unsupported', 'parser_version' => 'none', 'normalization_version' => '1', 'validation_version' => '1', 'status' => 'failed', 'last_error_code' => 'unsupported_parser', 'finished_at' => now()]);
                 } else {
-                    $run = app(ObservationProcessor::class)->process($observation, $runKey, 'json-v1');
+                    $parserVersion = in_array($attempt->artifact_content_type, ['text/html', 'application/xhtml+xml'], true)
+                        ? HtmlScholarshipExtractor::VERSION : 'json-v1';
+                    $run = app(ObservationProcessor::class)->process($observation, $runKey, $parserVersion);
                 }
                 $attempt->forceFill(['observation_id' => $observation->id]);
                 app(CrawlerEventRecorder::class)->record($existingId ? 'observation.replayed' : 'observation.created', $source, $job, $attempt, $worker, details: ['observation_id' => $observation->id, 'processing_run_id' => $run->id]);

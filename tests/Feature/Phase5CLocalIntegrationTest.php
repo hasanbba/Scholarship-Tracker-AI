@@ -8,6 +8,7 @@ use App\Models\CrawlerWorkerCredential;
 use App\Models\CrawlerEvent;
 use App\Models\RawObservation;
 use App\Models\ScholarshipSource;
+use App\Services\Crawler\CrawlerDueSourceService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -73,7 +74,7 @@ PHP);
             $source = ScholarshipSource::query()->create([
                 'source_type' => 'other_official', 'source_name' => 'Phase 5C local fixture', 'source_url' => $url,
                 'source_url_hash' => hash('sha256', $url), 'status' => 'active', 'crawl_enabled' => true,
-                'crawl_method' => 'http', 'robots_policy' => 'allowed', 'allowed_path_prefix' => '/scholarships',
+                'crawl_method' => 'http', 'crawl_frequency' => 'daily', 'robots_policy' => 'allowed', 'allowed_path_prefix' => '/scholarships',
                 'source_concurrency_limit' => 1,
             ]);
 
@@ -125,7 +126,9 @@ PHP);
             $fetcher = new SafeFetcher(new UrlPolicy(new IpAddressPolicy(), $dns), $fetchHttp, new RobotsPolicy(), new RetryPolicy(0, 1, 5, $sleeper), $spool, $config->maxFetchBytes, $config->maxRedirects, $config->allowedContentTypes, 0, $config->fetchOperationTimeoutSeconds);
             $application = new WorkerApplication($config, $api, $credentialStore, $identity, $spool, $logger, new ShutdownController($logger), $fetcher);
 
-            $firstJob = $this->createJob($source, 'phase5c-live-a');
+            $dispatch = app(CrawlerDueSourceService::class)->dispatchDue();
+            $this->assertSame(1, $dispatch['scheduled']);
+            $firstJob = CrawlJob::query()->where('source_id', $source->id)->where('state', 'queued')->firstOrFail();
             $application->once();
             $firstAttempt = $firstJob->fresh()->currentAttempt;
             $artifactRefs[] = $firstAttempt->artifact_ref;
